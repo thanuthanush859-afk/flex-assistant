@@ -11,9 +11,14 @@ import com.flex.assistant.ai.FlexBrain
 import com.flex.assistant.ai.FlexException
 import com.flex.assistant.ai.GeminiClient
 import com.flex.assistant.ai.ToolRouter
+import com.flex.assistant.device.AppInfo
 import com.flex.assistant.device.AppLauncher
+import com.flex.assistant.device.LaunchResult
+import com.flex.assistant.memory.MemoryStore
 import com.flex.assistant.settings.FlexSettings
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.IOException
 
 data class ChatMessage(val fromUser: Boolean, val text: String)
@@ -22,26 +27,62 @@ data class UiState(
     val status: String = "FLEX is ready.",
     val busy: Boolean = false,
     val hasKey: Boolean = false,
+    val standby: Boolean = false,
     val messages: List<ChatMessage> = emptyList()
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val settings = FlexSettings(app)
-    private val brain = FlexBrain(
-        GeminiClient(settings), ConversationManager(), ToolRouter(AppLauncher(app))
-    )
+    private val memory = MemoryStore(app)
+    private val launcher = AppLauncher(app)
+    private val conversation = ConversationManager(memory)
+    private val brain = FlexBrain(GeminiClient(settings), conversation, ToolRouter(launcher, memory))
 
-    var state by mutableStateOf(UiState(hasKey = settings.apiKey.isNotBlank()))
+    var state by mutableStateOf(
+        UiState(
+            hasKey = settings.apiKey.isNotBlank(),
+            messages = memory.allMessages().map { ChatMessage(it.role == "user", it.text) }
+        )
+    )
         private set
+
+    var apps by mutableStateOf<List<AppInfo>>(emptyList())
+        private set
+
+    fun loadApps() {
+        viewModelScope.launch { apps = withContext(Dispatchers.Default) { launcher.installedApps() } }
+    }
+
+    fun openApp(app: AppInfo) {
+        val msg = when (val r = launcher.openPackage(app.packageName)) {
+            is LaunchResult.Launched -> "Opened ${r.label}."
+            is LaunchResult.NotInstalled -> "${app.label} is not installed."
+            is LaunchResult.Failed -> "Could not open ${r.label}: ${r.reason}"
+        }
+        state = state.copy(status = msg)
+    }
 
     fun saveKey(key: String) {
         settings.apiKey = key
         state = state.copy(hasKey = settings.apiKey.isNotBlank())
     }
 
+    fun setStandby(on: Boolean) {
+        state = state.copy(standby = on, status = if (on) "Standby." else "FLEX is ready.")
+    }
+
+    fun clearHistory() {
+        memory.clearMessages()
+        conversation.clearContext()
+        state = state.copy(messages = emptyList(), status = "Conversation history cleared.")
+    }
+
+    fun onOrbTap() { state = state.copy(status = "Voice is added in the next update.") }
+    fun onCamTap() { state = state.copy(status = "Vision mode is added in the next update.") }
+
     fun send(text: String) {
         val t = text.trim()
-        if (t.isEmpty() || state.busy) return
+        if (t.isEmpty() || state.busy || state.standby) return
         state = state.copy(busy = true, status = "Thinking...",
             messages = state.messages + ChatMessage(true, t))
         viewModelScope.launch {

@@ -53,6 +53,16 @@ class AppLauncher(context: Context) {
 
     fun open(query: String): LaunchResult {
         val app = find(query) ?: return LaunchResult.NotInstalled(query)
+        return launch(app)
+    }
+
+    fun openPackage(packageName: String): LaunchResult {
+        val app = installedApps().firstOrNull { it.packageName == packageName }
+            ?: return LaunchResult.NotInstalled(packageName)
+        return launch(app)
+    }
+
+    private fun launch(app: AppInfo): LaunchResult {
         val intent = pm.getLaunchIntentForPackage(app.packageName)
             ?: return LaunchResult.Failed(app.label, "no launchable screen")
         return try {
