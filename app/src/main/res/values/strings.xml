@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_desc">FLEX uses this to press Send in WhatsApp or Gmail, tap a video, scroll, go back and read the screen when you ask it to. It never runs unless you give a command.</string>
+</resources>

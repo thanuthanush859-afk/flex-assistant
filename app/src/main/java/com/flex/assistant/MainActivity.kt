@@ -11,4 +11,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent { FlexTheme { HomeScreen() } }
     }
+
+    override fun onResume() {
+        super.onResume()
+        FlexRuntime.resumeTick.value = FlexRuntime.resumeTick.value + 1
+    }
 }
